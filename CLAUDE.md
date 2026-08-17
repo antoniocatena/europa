@@ -169,14 +169,57 @@ TOTAL del enjambre antes/después, no la salud de un alien específico por
    `three.min.js` como archivos servidos aparte en vez de inlineados? Ahora
    mismo `index.html` es un build inlineado — funciona standalone pero pesa
    ~700KB).
-2. Primer commit: agregar `game3d.js`, `index3d.html`, `three.min.js`,
-   `build.js`, `test_curved_full.js`, `package.json`, `index.html` (el
-   build), y pushear.
-3. Verificar que GitHub Pages efectivamente sirva el juego en
-   `antoniocatena.com` una vez pusheado (settings del repo → Pages → source
-   branch/folder).
-4. Seguir iterando sobre pedidos del usuario (Antonio), haciendo un commit +
+2. ~~Primer commit~~ — hecho (commit `cab7333`, pusheado). Verificado en vivo
+   que GitHub Pages sirve el juego en `antoniocatena.com`.
+3. Seguir iterando sobre pedidos del usuario (Antonio), haciendo un commit +
    push por cada hito que valga la pena, como pidió explícitamente.
+
+## Soporte mobile (agregado en esta sesión)
+
+Se agregaron controles táctiles completos para que el juego sea jugable en
+celulares, sin tocar la lógica de input de desktop (todo es aditivo):
+
+- **Aspect ratio**: `#stage` en `index3d.html` usaba `width:960px;height:600px;
+  max-width:100vw;max-height:100vh` — en pantallas angostas esto rompía la
+  proporción 8:5 porque ancho y alto se clampeaban de forma independiente.
+  Se cambió a la técnica `width:min(960px,100vw,100vh*8/5)` /
+  `height:min(600px,100vh,100vw*5/8)` para que siempre preserve el aspect
+  ratio (letterbox en vez de estirar).
+- **Bug real encontrado y corregido**: `renderer.setSize(VIEW_W, VIEW_H)` (sin
+  el tercer argumento) hace que Three.js fije `canvas.style.width/height` en
+  960px/600px inline, pisando el `width:100%;height:100%` del CSS — el canvas
+  se desbordaba del `#stage` en cualquier pantalla más chica que 960×600 (esto
+  ya pasaba en desktop con ventanas chicas, no era exclusivo de mobile). Fix:
+  `renderer.setSize(VIEW_W, VIEW_H, false)` — el `false` le dice a Three.js
+  que no toque el CSS, solo el buffer interno de dibujo.
+- **Controles táctiles** (todo en `game3d.js`, bloque `if(IS_TOUCH){...}`
+  después de los listeners de teclado): joystick virtual (`#joyZone` — mitad
+  izquierda de la pantalla, dinámico, aparece donde tocás) que alimenta
+  `touchMove.{x,z}`, sumado a `mx`/`mz` junto con las teclas WASD en el update
+  loop. Drag en `#lookZone` (toda la pantalla) rota cámara igual que
+  `mousemove` pero sin pointer lock (no aplica en touch). Botones `#jumpBtn` /
+  `#fireBtn` alimentan `touchJump` / `fireHeld`. `IS_TOUCH` se detecta una
+  sola vez con `'ontouchstart' in window || navigator.maxTouchPoints>0`.
+  Debug hook agregado: `window.__debug.getTouchInput()`.
+- **CSS responsive**: media query `(max-width:640px), (max-height:520px)`
+  reduce fuentes/paddings y hace que `#overlay` (historia + botón "Iniciar
+  descenso") sea scrolleable con `justify-content:flex-start` — el texto de
+  la historia ya era más alto que 600px incluso en desktop chico, así que
+  el overflow-y:auto quedó *solo* en la media query para no cambiar el
+  comportamiento en desktop grande (ahí el texto simplemente se sale
+  visualmente del stage hacia el margen negro, como siempre).
+- **Testing sin Playwright**: esta máquina no tiene `node`/`npm` instalados
+  (a diferencia del sandbox de Cowork donde se armó `test_curved_full.js`).
+  El build (`node build.js EUROPA-2025-3D.html`) se replicó a mano con
+  `python3` (mismo string-replace que hace `build.js`) para no depender de
+  Node. La verificación de los controles táctiles se hizo con el navegador
+  del propio Claude Code: viewport mobile (`resize_window` a 375×812),
+  eventos `Touch`/`TouchEvent` sintéticos vía `javascript_exec`, y chequeo de
+  estado real del juego a través de `window.__debug`. Ojo: en ese navegador
+  el loop de `requestAnimationFrame` sólo avanza cuando el tool pide un
+  screenshot/interacción — un `wait` o un `javascript_exec` puro no pintan
+  frames nuevos. Si algo "no se mueve" al testear ahí, tomar un screenshot
+  antes de volver a leer el estado, no asumir que es un bug real.
 
 ## Nota sobre infraestructura
 

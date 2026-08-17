@@ -22,6 +22,7 @@ const alienBarInner = document.getElementById('alienBarInner');
 const alienLabelEl = document.getElementById('alienLabel');
 const fadeOverlay = document.getElementById('fadeOverlay');
 const crosshair = document.getElementById('crosshair');
+const touchControls = document.getElementById('touchControls');
 
 const VIEW_W = 960, VIEW_H = 600;
 const WORLD_W = 240, WORLD_D = 150; // Europa (x east-west, z north-south)
@@ -85,7 +86,7 @@ function showMessage(text, dur){
 // THREE.JS SETUP
 // ============================================================
 const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
-renderer.setSize(VIEW_W, VIEW_H);
+renderer.setSize(VIEW_W, VIEW_H, false); // false: keep CSS in control of display size, only set the drawing-buffer resolution
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1293,6 +1294,7 @@ const CAM_DIST = 9.5, CAM_BASE_HEIGHT = 2.6, CAM_MIN_Y = 1.4;
 const glCanvas = renderer.domElement;
 function isPointerLocked(){ return document.pointerLockElement === glCanvas; }
 canvasStage.addEventListener('click', ()=>{
+  if(IS_TOUCH) return;
   if((state === 'playing' || state === 'combat') && !isPointerLocked()){
     glCanvas.requestPointerLock();
   }
@@ -1332,6 +1334,107 @@ window.addEventListener('keydown', e=>{
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
 });
 window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()] = false; });
+
+// ---------- touch controls (mobile) ----------
+const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints||0) > 0;
+const touchMove = { x:0, z:0 };
+let touchJump = false, fireHeld = false;
+if(IS_TOUCH){
+  const joyZone = document.getElementById('joyZone');
+  const joyBase = document.getElementById('joyBase');
+  const joyKnob = document.getElementById('joyKnob');
+  const lookZone = document.getElementById('lookZone');
+  const jumpBtn = document.getElementById('jumpBtn');
+  const fireBtn = document.getElementById('fireBtn');
+  const controlsHint = document.getElementById('controlsHint');
+  if(controlsHint) controlsHint.textContent = 'Joystick: moverse · Arrastrar: mirar · Botones: saltar / disparar';
+
+  const JOY_RADIUS = 55;
+  let joyTouchId = null, joyOriginX = 0, joyOriginY = 0;
+  joyZone.addEventListener('touchstart', (e)=>{
+    if(joyTouchId !== null) return;
+    const t = e.changedTouches[0];
+    joyTouchId = t.identifier;
+    const rect = joyZone.getBoundingClientRect();
+    joyOriginX = t.clientX - rect.left;
+    joyOriginY = t.clientY - rect.top;
+    joyBase.style.left = joyOriginX + 'px';
+    joyBase.style.top = joyOriginY + 'px';
+    joyBase.style.display = 'block';
+    joyKnob.style.left = '31px';
+    joyKnob.style.top = '31px';
+    e.preventDefault();
+  }, { passive:false });
+  joyZone.addEventListener('touchmove', (e)=>{
+    for(const t of e.changedTouches){
+      if(t.identifier !== joyTouchId) continue;
+      const rect = joyZone.getBoundingClientRect();
+      let dx = (t.clientX - rect.left) - joyOriginX;
+      let dy = (t.clientY - rect.top) - joyOriginY;
+      const len = Math.hypot(dx,dy);
+      if(len > JOY_RADIUS){ dx = dx/len*JOY_RADIUS; dy = dy/len*JOY_RADIUS; }
+      joyKnob.style.left = (31 + dx) + 'px';
+      joyKnob.style.top = (31 + dy) + 'px';
+      touchMove.x = dx / JOY_RADIUS;
+      touchMove.z = -dy / JOY_RADIUS;
+    }
+    e.preventDefault();
+  }, { passive:false });
+  function endJoyTouch(e){
+    for(const t of e.changedTouches){
+      if(t.identifier !== joyTouchId) continue;
+      joyTouchId = null;
+      touchMove.x = 0; touchMove.z = 0;
+      joyBase.style.display = 'none';
+    }
+  }
+  joyZone.addEventListener('touchend', endJoyTouch);
+  joyZone.addEventListener('touchcancel', endJoyTouch);
+
+  // dragging anywhere (not just over the joystick zone) rotates the camera,
+  // mirroring the desktop mousemove handler but keyed off touch deltas
+  const TOUCH_YAW_SENSITIVITY = 0.006, TOUCH_PITCH_SENSITIVITY = 0.006;
+  let lookTouchId = null, lookLastX = 0, lookLastY = 0;
+  lookZone.addEventListener('touchstart', (e)=>{
+    if(lookTouchId !== null) return;
+    const t = e.changedTouches[0];
+    lookTouchId = t.identifier;
+    lookLastX = t.clientX; lookLastY = t.clientY;
+    e.preventDefault();
+  }, { passive:false });
+  lookZone.addEventListener('touchmove', (e)=>{
+    for(const t of e.changedTouches){
+      if(t.identifier !== lookTouchId) continue;
+      const dx = t.clientX - lookLastX, dy = t.clientY - lookLastY;
+      lookLastX = t.clientX; lookLastY = t.clientY;
+      if(state !== 'playing' && state !== 'combat') continue;
+      player.facing -= dx * TOUCH_YAW_SENSITIVITY;
+      pitch += -dy * TOUCH_PITCH_SENSITIVITY;
+      pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch));
+    }
+    e.preventDefault();
+  }, { passive:false });
+  function endLookTouch(e){
+    for(const t of e.changedTouches){
+      if(t.identifier !== lookTouchId) continue;
+      lookTouchId = null;
+    }
+  }
+  lookZone.addEventListener('touchend', endLookTouch);
+  lookZone.addEventListener('touchcancel', endLookTouch);
+
+  jumpBtn.addEventListener('touchstart', (e)=>{ touchJump = true; e.preventDefault(); e.stopPropagation(); }, { passive:false });
+  jumpBtn.addEventListener('touchend', (e)=>{ touchJump = false; e.preventDefault(); e.stopPropagation(); }, { passive:false });
+  jumpBtn.addEventListener('touchcancel', ()=>{ touchJump = false; });
+
+  fireBtn.addEventListener('touchstart', (e)=>{
+    fireHeld = true;
+    if(state === 'combat' && shootCooldown <= 0){ firePlayerWeapon(); shootCooldown = 0.28; }
+    e.preventDefault(); e.stopPropagation();
+  }, { passive:false });
+  fireBtn.addEventListener('touchend', (e)=>{ fireHeld = false; e.preventDefault(); e.stopPropagation(); }, { passive:false });
+  fireBtn.addEventListener('touchcancel', ()=>{ fireHeld = false; });
+}
 
 function collidesRock(x,z){
   const list = missionStage === 'saturn' ? sDecorRocks : missionStage === 'uranus' ? uDecorRocks : missionStage === 'jupiter' ? jDecorRocks : decorRocks;
@@ -1616,6 +1719,7 @@ function collectedAll(){ return collectedCount >= TOTAL_PARTS; }
 function updatePointerHint(){
   const hint = document.getElementById('pointerHint');
   if(!hint) return;
+  if(IS_TOUCH){ hint.style.display = 'none'; return; }
   hint.style.display = ((state === 'playing' || state === 'combat') && !isPointerLocked()) ? 'flex' : 'none';
 }
 
@@ -1624,6 +1728,7 @@ function startGame(){
   overlay.classList.add('hidden');
   hud.style.display = 'flex';
   mmCanvas.style.display = 'block';
+  if(IS_TOUCH) touchControls.style.display = 'block';
   state = 'intro';
   introT = 0;
   showMessage('Cápsula de descenso en curso...', 2.6);
@@ -1914,6 +2019,7 @@ function showWinScreen(){
   mmCanvas.style.display = 'none';
   alienHud.style.display = 'none';
   crosshair.style.display = 'none';
+  if(IS_TOUCH) touchControls.style.display = 'none';
   document.getElementById('pointerHint').style.display = 'none';
   if(document.exitPointerLock && isPointerLocked()) document.exitPointerLock();
   overlay.classList.remove('hidden');
@@ -1931,6 +2037,7 @@ function showGameOverScreen(){
   mmCanvas.style.display = 'none';
   alienHud.style.display = 'none';
   crosshair.style.display = 'none';
+  if(IS_TOUCH) touchControls.style.display = 'none';
   document.getElementById('pointerHint').style.display = 'none';
   if(document.exitPointerLock && isPointerLocked()) document.exitPointerLock();
   overlay.classList.remove('hidden');
@@ -1991,6 +2098,7 @@ function update(dt){
   if(state !== 'playing' && state !== 'combat' && state !== 'reward' && state !== 'saturnVictory') return;
 
   if(shootCooldown > 0) shootCooldown -= dt;
+  if(fireHeld && state === 'combat' && shootCooldown <= 0){ firePlayerWeapon(); shootCooldown = 0.28; }
 
   if(state === 'playing' || state === 'combat'){
     // ---- movement: Minecraft-style, relative to camera/player yaw ----
@@ -2001,6 +2109,7 @@ function update(dt){
     if(keys['arrowdown']||keys['s']) mz -= 1;
     if(keys['arrowright']||keys['d']) mx += 1;
     if(keys['arrowleft']||keys['a']) mx -= 1;
+    mx += touchMove.x; mz += touchMove.z;
     const moving = mx!==0 || mz!==0;
     player.moving = moving;
     if(moving){
@@ -2018,7 +2127,7 @@ function update(dt){
     }
 
     // ---- jump & gravity ----
-    if(player.grounded && keys[' ']){
+    if(player.grounded && (keys[' '] || touchJump)){
       player.vy = JUMP_SPEED;
       player.grounded = false;
     }
@@ -2166,7 +2275,7 @@ function update(dt){
   camera.up.copy(baseUp);
   camera.lookAt(camera.position.clone().add(forward));
 
-  crosshair.style.display = (state === 'combat' && isPointerLocked()) ? 'block' : 'none';
+  crosshair.style.display = (state === 'combat' && (isPointerLocked() || IS_TOUCH)) ? 'block' : 'none';
 }
 let performanceT = 0;
 
@@ -2251,6 +2360,7 @@ window.__debug = {
   getState: ()=>state,
   setState: (s)=>{ state = s; },
   getPitch: ()=>pitch, setPitch: (v)=>{ pitch = v; },
+  getTouchInput: ()=>({ IS_TOUCH, touchMove: {...touchMove}, touchJump, fireHeld }),
   damageAlien, firePlayerWeapon, beginTransition, beginTransitionToUranus, beginTransitionToSaturn,
   damageMiniAlien,
   getSaturnAliveCount: ()=>miniAliens.filter(m=>m.alive).length,
