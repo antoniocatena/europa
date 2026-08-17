@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EUROPA 2025 — Primer Contacto (3D)</title>
+<style>
+  :root{
+    --cyan:#4fd8ff;
+    --amber:#ffb454;
+    --danger:#ff5c5c;
+    --panel:rgba(6,14,26,0.82);
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; height:100%; background:#000;
+    font-family: 'Segoe UI', Consolas, monospace;
+    overflow:hidden;
+    color:#dff4ff;
+  }
+  #game-wrap{
+    position:relative;
+    width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center, #050a14 0%, #000000 100%);
+  }
+  #stage{
+    position:relative;
+    width:960px; height:600px;
+    max-width:100vw; max-height:100vh;
+    box-shadow: 0 0 60px rgba(79,216,255,0.15), 0 0 0 2px #0c2233 inset;
+    background:#000;
+  }
+  #glcanvas{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    display:block;
+  }
+  #minimap{
+    position:absolute; top:60px; right:14px;
+    width:150px; height:94px;
+    display:none;
+    z-index:5;
+    border-radius:3px;
+  }
+  #overlay{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column;
+    text-align:center;
+    background:rgba(2,6,12,0.88);
+    padding:30px;
+    transition:opacity 0.4s ease;
+    z-index:10;
+  }
+  #overlay.hidden{ opacity:0; pointer-events:none; }
+  .title{
+    font-size:2.6em;
+    letter-spacing:4px;
+    color:var(--cyan);
+    text-shadow:0 0 18px rgba(79,216,255,0.7);
+    margin:0 0 6px 0;
+  }
+  .subtitle{
+    font-size:1.05em;
+    color:var(--amber);
+    letter-spacing:2px;
+    margin-bottom:22px;
+  }
+  .story{
+    max-width:620px;
+    line-height:1.6;
+    font-size:0.95em;
+    color:#bfe8ff;
+    margin-bottom:26px;
+  }
+  .btn{
+    background:linear-gradient(180deg,#123449,#0a1e2b);
+    border:1px solid var(--cyan);
+    color:var(--cyan);
+    padding:12px 30px;
+    font-size:1em;
+    letter-spacing:2px;
+    cursor:pointer;
+    border-radius:4px;
+    text-transform:uppercase;
+    box-shadow:0 0 14px rgba(79,216,255,0.25);
+    transition:all .15s ease;
+  }
+  .btn:hover{ background:#123449; box-shadow:0 0 22px rgba(79,216,255,0.55); }
+  .hint{
+    margin-top:16px;
+    font-size:0.8em;
+    color:#6f95ab;
+  }
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between;
+    padding:10px 16px;
+    pointer-events:none;
+    font-size:0.85em;
+    z-index:5;
+  }
+  .hud-box{
+    background:var(--panel);
+    border:1px solid rgba(79,216,255,0.35);
+    border-radius:4px;
+    padding:6px 12px;
+    backdrop-filter:blur(2px);
+  }
+  #energyBarOuter{
+    width:140px; height:10px;
+    border:1px solid rgba(79,216,255,0.5);
+    border-radius:3px;
+    overflow:hidden;
+    margin-top:4px;
+    background:#0a1620;
+  }
+  #energyBarInner{
+    height:100%;
+    width:100%;
+    background:linear-gradient(90deg,#3fe0a0,#4fd8ff);
+    transition:width .2s ease;
+  }
+  #msgBox{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    max-width:720px;
+    background:var(--panel);
+    border:1px solid rgba(79,216,255,0.4);
+    border-radius:6px;
+    padding:10px 18px;
+    font-size:0.9em;
+    text-align:center;
+    opacity:0;
+    transition:opacity .35s ease;
+    pointer-events:none;
+    z-index:5;
+  }
+  #msgBox.show{ opacity:1; }
+  #partsCount{ color:var(--amber); font-weight:bold; }
+  #energyLabel{ color:var(--amber); }
+  .small{ font-size:0.75em; color:#7ea9c2; }
+  #alienHud{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    display:none;
+    z-index:5;
+    text-align:center;
+  }
+  #alienLabel{ color:var(--danger); font-size:0.8em; letter-spacing:2px; margin-bottom:3px; }
+  #alienBarOuter{
+    width:280px; height:10px;
+    border:1px solid rgba(255,92,92,0.6);
+    border-radius:3px;
+    overflow:hidden;
+    background:#1a0a0a;
+  }
+  #alienBarInner{
+    height:100%; width:100%;
+    background:linear-gradient(90deg,#ff3c6e,#ff9a2e);
+    transition:width .2s ease;
+  }
+  #crosshair{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:18px; height:18px;
+    display:none;
+    z-index:5;
+    pointer-events:none;
+  }
+  #crosshair::before, #crosshair::after{
+    content:''; position:absolute; background:rgba(255,255,255,0.85);
+  }
+  #crosshair::before{ left:50%; top:0; width:2px; height:100%; transform:translateX(-1px); }
+  #crosshair::after{ top:50%; left:0; height:2px; width:100%; transform:translateY(-1px); }
+  #fadeOverlay{
+    position:absolute; inset:0;
+    background:#000;
+    opacity:0;
+    pointer-events:none;
+    z-index:8;
+  }
+  #pointerHint{
+    position:absolute; inset:0;
+    display:none;
+    align-items:center; justify-content:center;
+    flex-direction:column;
+    background:rgba(2,6,12,0.55);
+    z-index:6;
+    cursor:pointer;
+    text-align:center;
+  }
+  #pointerHint .ph-box{
+    background:var(--panel);
+    border:1px solid rgba(79,216,255,0.45);
+    border-radius:6px;
+    padding:16px 26px;
+    font-size:0.95em;
+  }
+  #pointerHint b{ color:var(--cyan); }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="stage">
+    <canvas id="minimap" width="150" height="94"></canvas>
+
+    <div id="hud" style="display:none;">
+      <div class="hud-box">
+        <div id="energyLabel">ENERGÍA</div>
+        <div id="energyBarOuter"><div id="energyBarInner"></div></div>
+      </div>
+      <div class="hud-box">
+        PIEZAS: <span id="partsCount">0 / 10</span>
+      </div>
+    </div>
+
+    <div id="alienHud">
+      <div id="alienLabel">CRIATURA ALIENÍGENA</div>
+      <div id="alienBarOuter"><div id="alienBarInner"></div></div>
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="fadeOverlay"></div>
+
+    <div id="msgBox"></div>
+
+    <div id="pointerHint"><div class="ph-box">Click para activar la cámara del mouse<br><span class="small">Esc la libera en cualquier momento</span></div></div>
+
+    <div id="overlay">
+      <div class="title">EUROPA</div>
+      <div class="subtitle">PRIMER CONTACTO — AÑO 2025 · MODO 3D</div>
+      <div class="story" id="storyText">
+        Una sonda robótica de exploración humanoide, modelo <b>EXP‑07</b> —una máquina bípeda de aleación plateada,
+        heredera de los últimos robots de asistencia terrestre—, es lanzada en una cápsula de descenso hacia
+        <b>Europa</b>, la luna helada de Júpiter.<br><br>
+        El descenso no sale como estaba previsto: la cápsula se estrella y queda dañada, con <b>10 piezas</b> desparramadas
+        por el hielo. EXP‑07 deberá recolectarlas y volver a la cápsula para reparar el motor.<br><br>
+        Una vez reparada, la nave despegará hacia <b>Júpiter</b> — pero algo más habita en sus nubes altas. Ahí, EXP‑07
+        deberá defenderse de una criatura alienígena hostil... y si la derrota, se quedará con algo más que la vida:
+        un <b>cañón de plasma</b> propio.<br><br>
+        Con esa nueva arma, el viaje no termina: la nave pondrá rumbo a <b>Urano</b>, donde una segunda criatura —mucho
+        más fuerte que la primera— aguarda entre la niebla helada.<br><br>
+        Y todavía queda una última prueba: cruzando el <b>cinturón de asteroides</b>, la nave llegará hasta <b>Saturno</b>,
+        donde un <b>enjambre de 12 criaturas</b> emergerá entre sus anillos dorados.<br><br>
+        Cuidado en el hielo: las grietas oscuras dañan tu energía — saltá para cruzarlas sin daño.
+      </div>
+      <button class="btn" id="startBtn">Iniciar descenso</button>
+      <div class="hint">WASD: moverse &nbsp;·&nbsp; Mouse: mirar/apuntar &nbsp;·&nbsp; Espacio: saltar &nbsp;·&nbsp; Click: cámara / disparar</div>
+    </div>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+<script src="game3d.js"></script>
+</body>
+</html>
